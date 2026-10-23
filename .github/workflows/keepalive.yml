@@ -1,0 +1,28 @@
+name: Keepalive
+
+# GitHub 会停用 60 天无活动仓库的 schedule 触发，
+# 这里每周提交一次空变更来维持仓库活跃，保证签到定时任务不被停用。
+# 不需要的话直接删除本文件。
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"   # 每周一 11:17 (UTC+8)
+  workflow_dispatch:
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Touch keepalive file
+        run: |
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > .keepalive
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .keepalive
+          git diff --staged --quiet || git commit -m "chore: keepalive"
+          git push

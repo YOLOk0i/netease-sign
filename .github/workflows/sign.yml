@@ -2,8 +2,8 @@ name: Netease Daily Sign
 
 on:
   schedule:
+    - cron: "5 16 * * *"    # 每天 00:05 (UTC+8)
     - cron: "35 20 * * *"   # 每天 04:35 (UTC+8)
-    - cron: "30 14 * * *"   # 每天 22:30 (UTC+8)
   workflow_dispatch:
 
 jobs:
@@ -19,5 +19,5 @@ jobs:
         env:
           TZ: Asia/Shanghai
           NETEASE_COOKIE: ${{ secrets.NETEASE_COOKIE }}
-          DINGTALK_WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
-          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+          FEISHU_SECRET: ${{ secrets.FEISHU_SECRET }}

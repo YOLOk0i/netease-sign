@@ -1,7 +1,7 @@
 import crypto from "crypto";
 
 const COOKIE = process.env.NETEASE_COOKIE;
-const DT_WEBHOOK = process.env.DINGTALK_WEBHOOK;
+const FS_WEBHOOK = process.env.FEISHU_WEBHOOK;
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
@@ -86,7 +86,6 @@ function log(tag, msg) {
   console.log(`[${tag}] ${msg}`);
 }
 
-// 发起 weapi 加密的 POST 请求，返回解析后的 JSON；失败返回 null
 async function weapiPost(url, data) {
   const csrfToken = getCookieValue("__csrf");
   const fullUrl = `${url}${csrfToken ? "?csrf_token=" + csrfToken : ""}`;
@@ -109,8 +108,6 @@ async function weapiPost(url, data) {
 }
 
 // ── 云贝中心签到 ──────────────────────────────────────────
-// 真正的云贝签到接口（签到成功后可在手机 App 云贝中心看到奖励与记录）
-// 注意：老的 point/dailyTask 是"乐签/积分"签到，云贝中心看不到记录，已接近废弃
 async function cloudSignIn() {
   const data = await weapiPost("https://music.163.com/weapi/pointmall/user/sign", {});
 
@@ -121,7 +118,6 @@ async function cloudSignIn() {
   }
 
   if (data.code === 200) {
-    // data.sign: true 签到成功 | false 今日已签到
     if (data.data?.sign === true) {
       state.cloud = { ok: true, text: "签到成功", shells: 0 };
       log("云贝签到", "签到成功");
@@ -149,7 +145,7 @@ async function getTodayShells() {
   log("云贝", "查询今日云贝失败");
 }
 
-// ── VIP 信息查询（weapi 加密，兼容海外 IP）──────────────────────────
+// ── VIP 信息查询 ───────────────────────────────────────
 async function getVipInfo() {
   try {
     const csrfToken = getCookieValue("__csrf");
@@ -228,88 +224,108 @@ async function claimRewards() {
   }
 }
 
-// ── 钉钉通知 ──────────────────────────────────────────
-async function sendDingTalk() {
-  if (!DT_WEBHOOK) return;
-
+// ── 飞书通知 ──────────────────────────────────────────
+function buildFeishuPayload() {
   const now = new Date();
   const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
   const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const weekDay = weekdays[now.getDay()];
+  const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
   const cloudLine = state.cloud.ok
-    ? `${state.cloud.shells > 0 ? `🎁 ${state.cloud.text} · 今日 +${state.cloud.shells} 云贝` : state.cloud.text}`
+    ? `${state.cloud.shells > 0 ? `${state.cloud.text} · 今日 +${state.cloud.shells} 云贝` : state.cloud.text}`
     : state.cloud.text;
 
-  // 钉钉 markdown：用 \n 换行（不用 <br/>），手机端更美观
-  // 钉钉不支持表格，用引用块和列表排版
-  const md = [
-    `## 🎵 网易云音乐签到`,
-    ``,
-    `> 📅 ${dateStr} 星期${weekDay}`,
-    ``,
-    `---`,
-    ``,
-    `☁️ **云贝签到**`,
-    ``,
-    `${state.cloud.ok ? "✅" : "❌"} ${cloudLine}`,
+  const elements = [
+    {
+      tag: "div",
+      text: {
+        tag: "lark_md",
+        content: `**☁️ 云贝签到**\n${state.cloud.ok ? "✅" : "❌"} ${cloudLine}`,
+      },
+    },
+    { tag: "hr" },
   ];
 
   if (state.vipLevel) {
-    md.push(
-      ``,
-      `---`,
-      ``,
-      `👑 **VIP 会员**`,
-      ``,
-      `> 🏷️ ${state.vipLevel}  📊 成长值 ${state.vipGrowth}`,
-      ``,
-      `${state.vipSign.ok ? "✅" : "❌"} VIP签到：${state.vipSign.ok ? "成功" : state.vipSign.text}`,
-      `${state.vipReward.text !== "-" ? (state.vipReward.ok ? "🎁" : "❌") : "  "} 成长值：${state.vipReward.ok ? state.vipReward.text : state.vipReward.text}`
-    );
+    elements.push({
+      tag: "div",
+      text: {
+        tag: "lark_md",
+        content:
+          `**👑 VIP 会员**\n` +
+          `🏷️ ${state.vipLevel}　📊 成长值 ${state.vipGrowth}\n` +
+          `${state.vipSign.ok ? "✅" : "❌"} VIP签到：${state.vipSign.ok ? "成功" : state.vipSign.text}\n` +
+          `${state.vipReward.text !== "-" ? (state.vipReward.ok ? "🎁" : "❌") : "·"} 成长值：${state.vipReward.text}`,
+      },
+    });
   } else {
-    md.push(
-      ``,
-      `---`,
-      ``,
-      `👑 **VIP 会员**`,
-      ``,
-      `❌ 非会员或查询失败`
-    );
+    elements.push({
+      tag: "div",
+      text: { tag: "lark_md", content: "**👑 VIP 会员**\n❌ 非会员或查询失败" },
+    });
   }
 
-  md.push(
-    ``,
-    `---`,
-    ``,
-    `🤖 [netease-sign](https://github.com/a6b6c6d6/netease-sign)`
-  );
+  elements.push({
+    tag: "note",
+    elements: [
+      { tag: "plain_text", content: `netease-sign · GitHub Actions · ${dateStr} ${timeStr}` },
+    ],
+  });
 
-  let url = DT_WEBHOOK;
-  const secret = process.env.DINGTALK_SECRET;
-  if (secret) {
-    const timestamp = Date.now();
-    const sign = crypto
-      .createHmac("sha256", secret)
-      .update(timestamp + "\n" + secret)
-      .digest("base64");
-    url += `&timestamp=${timestamp}&sign=${encodeURIComponent(sign)}`;
-  }
+  return {
+    msg_type: "interactive",
+    card: {
+      config: { wide_screen_mode: true },
+      header: {
+        template: state.cloud.ok ? "green" : "red",
+        title: { tag: "plain_text", content: `🎵 网易云音乐签到报告 · ${dateStr} 周${weekDay}` },
+      },
+      elements,
+    },
+  };
+}
 
-  const res = await fetch(url, {
+// 飞书加签：注意飞书的 key 是 "timestamp\nsecret"，消息体为空
+function applyFeishuSign(payload) {
+  const secret = process.env.FEISHU_SECRET;
+  if (!secret) return payload;
+  const timestamp = Math.floor(Date.now() / 1000);
+  const sign = crypto.createHmac("sha256", `${timestamp}\n${secret}`).digest("base64");
+  return { ...payload, timestamp: String(timestamp), sign };
+}
+
+async function postFeishu(payload) {
+  const res = await fetch(FS_WEBHOOK, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      msgtype: "markdown",
-      markdown: { title: `🎵 签到报告 ${dateStr}`, text: md.join("\n") },
-    }),
+    body: JSON.stringify(applyFeishuSign(payload)),
   });
-  const data = await res.json();
-  if (data.errcode === 0) {
-    log("钉钉", "通知发送成功");
+  const data = await res.json().catch(() => ({}));
+  const ok = data.code === 0 || data.StatusCode === 0 || data.ok === true;
+  if (ok) {
+    log("飞书", "通知发送成功");
   } else {
-    log("钉钉", `发送失败 errcode=${data.errcode}`);
+    log("飞书", `发送失败 code=${data.code ?? data.StatusCode ?? "?"} msg=${data.msg ?? data.message ?? ""}`);
   }
+  return ok;
+}
+
+async function sendFeishu() {
+  if (!FS_WEBHOOK) return;
+
+  // 先发消息卡片，若被拒绝（如机器人不支持卡片 / 关键词校验失败）则降级为纯文本
+  const ok = await postFeishu(buildFeishuPayload());
+  if (ok) return;
+
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const fallback =
+    `🎵 网易云音乐签到报告 ${dateStr}\n` +
+    `☁️ 云贝：${state.cloud.ok ? "✅" : "❌"} ${state.cloud.text}${state.cloud.shells > 0 ? ` (+${state.cloud.shells})` : ""}\n` +
+    `👑 VIP：${state.vipLevel || "非会员"}${state.vipLevel ? ` 成长值 ${state.vipGrowth}` : ""}\n` +
+    `签到：${state.vipSign.ok ? "成功" : state.vipSign.text || "-"}｜成长值：${state.vipReward.text || "-"}`;
+  await postFeishu({ msg_type: "text", content: { text: fallback } });
 }
 
 // ── 主流程 ──────────────────────────────────────────
@@ -342,7 +358,7 @@ async function main() {
     log("VIP", "查询失败或非会员");
   }
 
-  await sendDingTalk();
+  await sendFeishu();
 }
 
 main().catch((err) => {
