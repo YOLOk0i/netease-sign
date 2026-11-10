@@ -2,7 +2,7 @@ name: Netease Daily Sign
 
 on:
   schedule:
-    - cron: "3 15 * * *"    # 每天 23:03 (UTC+8)
+    - cron: "3 14 * * *"    # 每天 22:03 (UTC+8)
   workflow_dispatch:
 
 jobs:
