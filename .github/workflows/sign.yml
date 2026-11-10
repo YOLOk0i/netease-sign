@@ -2,7 +2,7 @@ name: Netease Daily Sign
 
 on:
   schedule:
-    - cron: "3 14 * * *"    # 每天 22:03 (UTC+8)
+    - cron: "0 8 * * *"     # 每天 16:00 (UTC+8)，GitHub 延迟约 6h，实际 ~22:00
   workflow_dispatch:
 
 jobs:
