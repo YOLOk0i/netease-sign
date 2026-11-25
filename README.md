@@ -1,6 +1,6 @@
 # 网易云音乐自动签到
 
-每天北京时间 14:10 配置触发（GitHub cron 有约 6 小时延迟，实际约 20:10 生效）
+每天北京时间 12:10 配置触发（GitHub cron 有延迟）
 
 > 本仓库基于 [a6b6c6d6/netease-sign](https://github.com/a6b6c6d6/netease-sign) 改造，
 > 通知渠道由钉钉改为飞书群机器人，签到逻辑保持一致。
